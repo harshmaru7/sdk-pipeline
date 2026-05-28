@@ -90,10 +90,34 @@ jobs:
             const yaml = require('js-yaml');
             const fs = require('fs');
             const d = yaml.load(fs.readFileSync('.work/openapi.yaml', 'utf8'));
+
+            // 1. Drop paths whose inline type names collide in Fern's
+            //    flat type table (proper fix: x-fern-type-name overrides).
             const drop = ['/v2/reserved_ipv6/{reserved_ipv6}/actions'];
             for (const p of drop) {
               if (d.paths && d.paths[p]) { delete d.paths[p]; console.log('dropped path:', p); }
             }
+
+            // 2. Strip default values that overflow int32 — Fern's Go
+            //    generator unmarshals defaults into Go int and crashes
+            //    on anything > MaxInt32 (e.g. kafka_topic_config has
+            //    several defaults set to MaxInt64).
+            let scrubbed = 0;
+            (function walk(node) {
+              if (node === null || typeof node !== 'object') return;
+              if (Array.isArray(node)) { node.forEach(walk); return; }
+              for (const k of Object.keys(node)) {
+                const v = node[k];
+                if (k === 'default' && typeof v === 'number' && Math.abs(v) > 2147483647) {
+                  delete node[k];
+                  scrubbed++;
+                  continue;
+                }
+                walk(v);
+              }
+            })(d);
+            console.log('stripped int32-overflowing defaults:', scrubbed);
+
             fs.writeFileSync('.work/openapi.yaml', yaml.dump(d, { lineWidth: -1, noRefs: true }));
           "
 
