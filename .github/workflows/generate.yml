@@ -52,8 +52,9 @@ jobs:
         with:
           node-version: "20"
 
-      - name: install fern CLI
-        run: npm install -g fern-api@5.38.1
+      - name: install fern CLI + spec bundler
+        run: |
+          npm install -g fern-api@5.38.1 @apidevtools/swagger-cli@4.0.4
 
       - name: scaffold fern workspace
         run: |
@@ -66,13 +67,15 @@ jobs:
             ls -la .spec/
             exit 1
           fi
-          # Copy the ENTIRE specification tree, not just the entry file.
-          # The DO spec uses relative $refs to sibling YAMLs (responses,
-          # models, shared/*) — Fern silently emits untyped response bodies
-          # when those refs can't be resolved.
-          mkdir -p .work/spec-tree
-          spec_root=".spec/$(dirname ${{ inputs.spec_path }})"
-          cp -R "$spec_root"/. .work/spec-tree/
+          # Bundle the spec: inline every external $ref into a single
+          # self-contained YAML. The DO spec splits resources across
+          # hundreds of files; Fern reads the entry file but if external
+          # refs can't be resolved it silently emits untyped responses
+          # (no Body type). Bundling avoids both ref-resolution issues
+          # and duplicate-type collisions in Fern's global type table.
+          swagger-cli bundle ".spec/${{ inputs.spec_path }}" \
+            --outfile .work/openapi.yaml \
+            --type yaml
 
       - name: fern generate --local --group ${{ inputs.language }}
         working-directory: .work/fern

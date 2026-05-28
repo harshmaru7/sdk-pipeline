@@ -1,6 +1,6 @@
 api:
   specs:
-    - openapi: ../spec-tree/DigitalOcean-public.v2.yaml
+    - openapi: ../openapi.yaml
 
 default-group: go
 
