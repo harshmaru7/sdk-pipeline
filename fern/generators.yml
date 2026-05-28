@@ -1,0 +1,43 @@
+api:
+  specs:
+    - openapi: ../openapi.yaml
+
+default-group: go
+
+groups:
+  go:
+    generators:
+      - name: fernapi/fern-go-sdk
+        version: 1.42.3
+        output:
+          location: local-file-system
+          path: ../output
+        config:
+          module:
+            path: github.com/harshmaru7/godo-next
+            version: 0.0.1
+
+  python:
+    generators:
+      - name: fernapi/fern-python-sdk
+        version: 5.14.3
+        output:
+          location: local-file-system
+          path: ../output
+        config:
+          client:
+            class_name: DigitalOcean
+            filename: client.py
+          package_name: pydo
+
+  typescript:
+    generators:
+      - name: fernapi/fern-typescript-sdk
+        version: 3.70.7
+        output:
+          location: local-file-system
+          path: ../output
+        config:
+          namespaceExport: DigitalOcean
+          packageJson:
+            name: "@harshmaru7/dots-next"
