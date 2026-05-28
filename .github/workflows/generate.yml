@@ -52,9 +52,8 @@ jobs:
         with:
           node-version: "20"
 
-      - name: install fern CLI + spec bundler
-        run: |
-          npm install -g fern-api@5.38.1 @apidevtools/swagger-cli@4.0.4
+      - name: install fern CLI
+        run: npm install -g fern-api@5.38.1
 
       - name: scaffold fern workspace
         run: |
@@ -67,15 +66,17 @@ jobs:
             ls -la .spec/
             exit 1
           fi
-          # Bundle the spec: inline every external $ref into a single
-          # self-contained YAML. The DO spec splits resources across
-          # hundreds of files; Fern reads the entry file but if external
-          # refs can't be resolved it silently emits untyped responses
-          # (no Body type). Bundling avoids both ref-resolution issues
-          # and duplicate-type collisions in Fern's global type table.
-          swagger-cli bundle ".spec/${{ inputs.spec_path }}" \
-            --outfile .work/openapi.yaml \
-            --type yaml
+          # Bundle the spec via redocly: external file $refs get hoisted
+          # into #/components/{schemas,responses,headers,...}; everything
+          # downstream uses standard OpenAPI #/components/... refs that
+          # Fern resolves correctly. Without this, Fern reads the entry
+          # file but silently emits untyped response bodies for any
+          # operation whose response/model lives in another file.
+          npx -y @redocly/cli@1.25.13 bundle \
+            ".spec/${{ inputs.spec_path }}" \
+            --output .work/openapi.yaml \
+            --ext yaml
+          echo "bundle size: $(wc -c < .work/openapi.yaml) bytes"
 
       - name: fern generate --local --group ${{ inputs.language }}
         working-directory: .work/fern
