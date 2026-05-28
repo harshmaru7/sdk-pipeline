@@ -137,6 +137,18 @@ jobs:
         working-directory: .work/fern
         run: fern generate --local --group ${{ inputs.language }}
 
+      - name: post-process generated code (Go-only)
+        if: inputs.language == 'go'
+        run: |
+          set -euxo pipefail
+          # Fern's Go generator emits a struct field `1ClickApplications`
+          # from DO's `/v2/1-click/...` tag — invalid Go syntax (identifiers
+          # can't start with a digit). Rename to `OneClickApplications`.
+          # The package import alias (`_1clickapplications`) is fine — Go
+          # packages may start with `_`.
+          find .work -name '*.go' -type f -print0 | \
+            xargs -0 sed -i 's/\b1ClickApplications\b/OneClickApplications/g'
+
       - name: locate fern output
         id: locate
         run: |
