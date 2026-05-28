@@ -103,6 +103,9 @@ jobs:
             --exclude='.gitignore' \
             "${{ steps.locate.outputs.dir }}/" ./
 
+      - name: drop staging dirs so they don't leak into the PR
+        run: rm -rf .work .sdk-generator .spec
+
       - name: stamp generation metadata
         run: |
           cat > .sdk-meta.json <<EOF
