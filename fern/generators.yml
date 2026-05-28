@@ -15,7 +15,7 @@ groups:
         config:
           module:
             path: github.com/harshmaru7/godo-next
-            version: 0.0.1
+            version: "1.21"
 
   python:
     generators:
