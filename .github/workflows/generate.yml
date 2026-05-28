@@ -78,6 +78,25 @@ jobs:
             --ext yaml
           echo "bundle size: $(wc -c < .work/openapi.yaml) bytes"
 
+          # Strip operations whose inline type names collide in Fern's
+          # global type table (e.g. `ActionStatus` declared both at the
+          # root and inside reservedIPv6Actions). This is a POC-level
+          # workaround — the proper fix is x-fern-type-name overrides
+          # on the conflicting types in the upstream spec, but that
+          # requires per-endpoint tagging we'll do post-POC.
+          NPM_GLOBAL=$(npm root -g)
+          npm install --prefix /tmp/postproc js-yaml@4.1.0 >/dev/null
+          NODE_PATH=/tmp/postproc/node_modules node -e "
+            const yaml = require('js-yaml');
+            const fs = require('fs');
+            const d = yaml.load(fs.readFileSync('.work/openapi.yaml', 'utf8'));
+            const drop = ['/v2/reserved_ipv6/{reserved_ipv6}/actions'];
+            for (const p of drop) {
+              if (d.paths && d.paths[p]) { delete d.paths[p]; console.log('dropped path:', p); }
+            }
+            fs.writeFileSync('.work/openapi.yaml', yaml.dump(d, { lineWidth: -1, noRefs: true }));
+          "
+
       - name: fern generate --local --group ${{ inputs.language }}
         working-directory: .work/fern
         run: fern generate --local --group ${{ inputs.language }}
