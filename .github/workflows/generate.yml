@@ -66,7 +66,13 @@ jobs:
             ls -la .spec/
             exit 1
           fi
-          cp ".spec/${{ inputs.spec_path }}" .work/openapi.yaml
+          # Copy the ENTIRE specification tree, not just the entry file.
+          # The DO spec uses relative $refs to sibling YAMLs (responses,
+          # models, shared/*) — Fern silently emits untyped response bodies
+          # when those refs can't be resolved.
+          mkdir -p .work/spec-tree
+          spec_root=".spec/$(dirname ${{ inputs.spec_path }})"
+          cp -R "$spec_root"/. .work/spec-tree/
 
       - name: fern generate --local --group ${{ inputs.language }}
         working-directory: .work/fern
