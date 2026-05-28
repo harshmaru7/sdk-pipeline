@@ -98,25 +98,37 @@ jobs:
               if (d.paths && d.paths[p]) { delete d.paths[p]; console.log('dropped path:', p); }
             }
 
-            // 2. Strip default values that overflow int32 — Fern's Go
-            //    generator unmarshals defaults into Go int and crashes
-            //    on anything > MaxInt32 (e.g. kafka_topic_config has
-            //    several defaults set to MaxInt64).
-            let scrubbed = 0;
+            // 2. Clamp any numeric value > MaxInt32 — Fern's Go generator
+            //    unmarshals literal numbers (defaults, examples, enum values,
+            //    etc.) into Go int and crashes on anything that overflows.
+            //    The DO spec has MaxInt64 sprinkled in kafka defaults AND
+            //    inside example response payloads.
+            const MAX = 2147483647;
+            let clamped = 0;
             (function walk(node) {
               if (node === null || typeof node !== 'object') return;
-              if (Array.isArray(node)) { node.forEach(walk); return; }
+              if (Array.isArray(node)) {
+                for (let i = 0; i < node.length; i++) {
+                  if (typeof node[i] === 'number' && Math.abs(node[i]) > MAX) {
+                    node[i] = node[i] > 0 ? MAX : -MAX;
+                    clamped++;
+                  } else {
+                    walk(node[i]);
+                  }
+                }
+                return;
+              }
               for (const k of Object.keys(node)) {
                 const v = node[k];
-                if (k === 'default' && typeof v === 'number' && Math.abs(v) > 2147483647) {
-                  delete node[k];
-                  scrubbed++;
-                  continue;
+                if (typeof v === 'number' && Math.abs(v) > MAX) {
+                  node[k] = v > 0 ? MAX : -MAX;
+                  clamped++;
+                } else {
+                  walk(v);
                 }
-                walk(v);
               }
             })(d);
-            console.log('stripped int32-overflowing defaults:', scrubbed);
+            console.log('clamped numeric values > MaxInt32:', clamped);
 
             fs.writeFileSync('.work/openapi.yaml', yaml.dump(d, { lineWidth: -1, noRefs: true }));
           "
