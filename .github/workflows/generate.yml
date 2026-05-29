@@ -91,9 +91,18 @@ jobs:
             const fs = require('fs');
             const d = yaml.load(fs.readFileSync('.work/openapi.yaml', 'utf8'));
 
-            // 1. Drop paths whose inline type names collide in Fern's
-            //    flat type table (proper fix: x-fern-type-name overrides).
-            const drop = ['/v2/reserved_ipv6/{reserved_ipv6}/actions'];
+            // 1. Drop paths that produce invalid identifiers or collide
+            //    in Fern's flat type table. Proper fix is per-path
+            //    overrides in the spec (x-fern-type-name, etc.) — until
+            //    then these endpoints are excluded across all SDKs.
+            const drop = [
+              '/v2/reserved_ipv6/{reserved_ipv6}/actions',
+              // /v2/1-clicks endpoints: tag '1-Click Applications' becomes
+              // an invalid class/field name '1ClickApplications' in Go AND
+              // Python (digit-leading identifier).
+              '/v2/1-clicks',
+              '/v2/1-clicks/kubernetes',
+            ];
             for (const p of drop) {
               if (d.paths && d.paths[p]) { delete d.paths[p]; console.log('dropped path:', p); }
             }
@@ -137,33 +146,31 @@ jobs:
         working-directory: .work/fern
         run: fern generate --local --group ${{ inputs.language }}
 
-      - name: post-process generated code (Go-only)
-        if: inputs.language == 'go'
-        run: |
-          set -euxo pipefail
-          # Fern's Go generator emits a struct field `1ClickApplications`
-          # from DO's `/v2/1-click/...` tag — invalid Go syntax (identifiers
-          # can't start with a digit). Rename to `OneClickApplications`.
-          # The package import alias (`_1clickapplications`) is fine — Go
-          # packages may start with `_`.
-          find .work -name '*.go' -type f -print0 | \
-            xargs -0 sed -i 's/\b1ClickApplications\b/OneClickApplications/g'
-
       - name: locate fern output
         id: locate
         run: |
           set -euxo pipefail
+          # Primary location (per generators.yml output.path).
           if [ -d ".work/output" ] && [ -n "$(ls -A .work/output 2>/dev/null)" ]; then
             echo "dir=.work/output" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # fallback: some Fern versions stage to .fern-tmp/<run>/output
-          staged=$(find .work -type d -path '*/.fern-tmp/*/output' | head -n1 || true)
-          if [ -n "$staged" ]; then
-            echo "dir=$staged" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "no fern output produced"
+          # Some Fern versions stage to .fern-tmp/<run>/output. Look anywhere
+          # under the workspace AND under /tmp (TS generator sometimes writes
+          # there before the copy step).
+          for root in .work /tmp; do
+            staged=$(find "$root" -type d -name output 2>/dev/null | head -n1 || true)
+            if [ -n "$staged" ] && [ -n "$(ls -A "$staged" 2>/dev/null)" ]; then
+              echo "found staged output at: $staged"
+              echo "dir=$staged" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          echo "no fern output produced — workspace state:"
+          find .work -maxdepth 3 -type d 2>/dev/null | head -40
+          echo "/tmp candidates:"
+          find /tmp -maxdepth 4 -type d -name output 2>/dev/null | head -10
           exit 1
 
       - name: sync generated files into repo root
